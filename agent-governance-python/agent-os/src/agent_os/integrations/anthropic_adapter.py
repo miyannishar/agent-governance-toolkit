@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -178,7 +179,7 @@ class AnthropicKernel(BaseIntegration):
         client_id = id(client)
         ctx = AnthropicContext(
             agent_id=f"anthropic-{client_id}",
-            session_id=f"ant-{int(time.time())}",
+            session_id=f"ant-{uuid.uuid4().hex[:12]}",
             policy=self.policy,
         )
         self.contexts[ctx.agent_id] = ctx
@@ -309,7 +310,7 @@ class _GovernedMessages:
             raise
 
         # --- post-execution checks ---
-        response_id = getattr(response, "id", f"msg-{int(time.time())}")
+        response_id = getattr(response, "id", f"msg-{uuid.uuid4().hex[:12]}")
         self._ctx.message_ids.append(response_id)
 
         if self._kernel.is_cancelled(response_id):
@@ -479,7 +480,7 @@ class GovernanceMessageHook:
         self._name = name
         self._ctx = AnthropicContext(
             agent_id=name,
-            session_id=f"ant-hook-{int(time.time())}",
+            session_id=f"ant-hook-{uuid.uuid4().hex[:12]}",
             policy=kernel.policy,
         )
         kernel.contexts[name] = self._ctx
@@ -546,7 +547,7 @@ class GovernanceMessageHook:
         response = client.messages.create(**kwargs)
 
         # --- post-execution checks ---
-        response_id = getattr(response, "id", f"msg-{int(time.time())}")
+        response_id = getattr(response, "id", f"msg-{uuid.uuid4().hex[:12]}")
         self._ctx.message_ids.append(response_id)
 
         # Track tokens
@@ -623,5 +624,9 @@ def wrap_client(
         DeprecationWarning,
         stacklevel=2,
     )
-    return AnthropicKernel(policy=policy).wrap(client)
+    # Suppress the nested DeprecationWarning emitted by kernel.wrap() so callers
+    # see exactly one warning per wrap_client() call, not two.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return AnthropicKernel(policy=policy).wrap(client)
 

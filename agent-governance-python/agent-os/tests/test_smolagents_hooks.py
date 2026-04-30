@@ -134,23 +134,33 @@ class TestBlockedPatterns:
         with pytest.raises(Exception, match="Blocked pattern"):
             callback(step, mock_agent)
 
-    def test_blocks_pattern_in_observation(self, callback, mock_agent):
-        step = _make_step(observation="Result: rm -rf / completed")
-        callback(step, mock_agent)  # Step without tool calls passes...
-
-        # But a step with tool calls + blocked observation:
-        kernel2 = SmolagentsKernel(
+    def test_blocks_pattern_in_observation(self, mock_agent):
+        # Observation scanning fires whenever blocked_patterns is configured,
+        # regardless of whether a tool call was made.
+        kernel_obs = SmolagentsKernel(
             allowed_tools=["web_search"],
             blocked_patterns=["rm -rf"],
         )
-        cb2 = kernel2.as_step_callback()
-        step2 = SimpleNamespace(
+        cb_obs = kernel_obs.as_step_callback()
+
+        step_no_tool = SimpleNamespace(
+            tool_calls=[],
+            action=None,
+            observation="Result: rm -rf / completed",
+        )
+        with pytest.raises(Exception, match="Blocked pattern.*observation"):
+            cb_obs(step_no_tool, mock_agent)
+
+        # Second independent callback for second sub-case.
+        cb_obs2 = kernel_obs.as_step_callback()
+        step_tool = SimpleNamespace(
             tool_calls=[],
             action=None,
             observation="Dangerous output: rm -rf /",
         )
         with pytest.raises(Exception, match="Blocked pattern.*observation"):
-            cb2(step2, mock_agent)
+            cb_obs2(step_tool, mock_agent)
+
 
     def test_clean_args_pass(self, callback, mock_agent):
         step = _make_step(

@@ -26,6 +26,7 @@ Features:
 
 import asyncio
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -154,7 +155,7 @@ class SemanticKernelWrapper(BaseIntegration):
         kernel_id = f"sk-{id(kernel)}"
         ctx = SKContext(
             agent_id=kernel_id,
-            session_id=f"sk-{int(datetime.now().timestamp())}",
+            session_id=f"sk-{uuid.uuid4().hex[:12]}",
             policy=self.policy,
             kernel_id=kernel_id
         )
@@ -806,9 +807,9 @@ def wrap_kernel(
         stacklevel=2,
     )
     wrapper = SemanticKernelWrapper(policy=policy, timeout_seconds=timeout_seconds)
-    # Suppress the deprecation from wrap() since we already emitted one
-    import contextlib
-    with contextlib.suppress(Exception), warnings.catch_warnings():
+    # Suppress only the nested DeprecationWarning from wrapper.wrap() — not real errors.
+    import warnings
+    with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         return wrapper.wrap(kernel)
 
@@ -860,13 +861,16 @@ class GovernanceFunctionFilter:
 
     def __init__(self, wrapper: SemanticKernelWrapper) -> None:
         self._wrapper = wrapper
+        # Use a unique key per filter instance to prevent context overwrites when
+        # as_filter() is called multiple times on the same wrapper.
+        self._ctx_key = f"sk-filter-{uuid.uuid4().hex[:8]}"
         self._ctx = SKContext(
-            agent_id="sk-filter",
-            session_id=f"sk-filter-{int(datetime.now().timestamp())}",
+            agent_id=self._ctx_key,
+            session_id=f"sk-filter-{uuid.uuid4().hex[:12]}",
             policy=wrapper.policy,
-            kernel_id="sk-filter",
+            kernel_id=self._ctx_key,
         )
-        wrapper._contexts["sk-filter"] = self._ctx
+        wrapper._contexts[self._ctx_key] = self._ctx
 
     @property
     def wrapper(self) -> SemanticKernelWrapper:
